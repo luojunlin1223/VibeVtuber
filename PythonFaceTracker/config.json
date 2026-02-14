@@ -1,0 +1,25 @@
+{
+  "camera": {
+    "index": 0,
+    "width": 640,
+    "height": 480,
+    "fps": 30
+  },
+  "mediapipe": {
+    "model_path": "models/face_landmarker_v2_with_blendshapes.task",
+    "min_detection_confidence": 0.5,
+    "min_tracking_confidence": 0.5,
+    "num_faces": 1
+  },
+  "network": {
+    "host": "127.0.0.1",
+    "port": 11111
+  },
+  "smoothing": {
+    "alpha": 0.3
+  },
+  "debug": {
+    "show_window": true,
+    "print_fps": true
+  }
+}
