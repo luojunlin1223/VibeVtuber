@@ -1,0 +1,25 @@
+{
+	"Version": 3,
+	"FileReferences": {
+		"Moc": "LG.moc3",
+		"Textures": [
+			"LG.4096/texture_00.png"
+		],
+		"Physics": "LG.physics3.json",
+		"DisplayInfo": "LG.cdi3.json"
+	},
+	"Groups": [
+		{
+			"Target": "Parameter",
+			"Name": "EyeBlink",
+			"Ids": [
+				"ParamEyeLOpen"
+			]
+		},
+		{
+			"Target": "Parameter",
+			"Name": "LipSync",
+			"Ids": []
+		}
+	]
+}
