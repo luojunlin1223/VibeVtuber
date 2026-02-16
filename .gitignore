@@ -88,4 +88,4 @@ PythonFaceTracker/*.pyc
 PythonFaceTracker/*.pyo
 PythonFaceTracker/*.pyd
 PythonFaceTracker/.Python
-PythonFaceTracker/models/*.task
+
