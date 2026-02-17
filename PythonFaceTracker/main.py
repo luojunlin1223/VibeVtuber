@@ -7,6 +7,7 @@ import cv2
 import json
 import time
 import os
+import sys
 from face_tracker import FaceTracker
 from network_sender import NetworkSender
 
@@ -20,10 +21,150 @@ def load_config(config_path: str = "config.json") -> dict:
         return json.load(f)
 
 
+def test_camera(index: int, timeout_ms: int = 2000) -> dict:
+    """
+    Test if a camera at the specified index is available
+
+    Args:
+        index: Camera index to test
+        timeout_ms: Timeout in milliseconds for opening camera
+
+    Returns:
+        dict with camera info if available, None otherwise
+    """
+    cap = cv2.VideoCapture(index)
+    cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, timeout_ms)
+
+    if not cap.isOpened():
+        return None
+
+    # Try to read a frame to confirm camera is actually working
+    ret, frame = cap.read()
+
+    if not ret:
+        cap.release()
+        return None
+
+    # Get camera information
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fps = int(cap.get(cv2.CAP_PROP_FPS))
+    backend = cap.getBackendName()
+
+    cap.release()
+
+    return {
+        'index': index,
+        'width': width,
+        'height': height,
+        'fps': fps if fps > 0 else 'Unknown',
+        'backend': backend
+    }
+
+
+def select_camera(config_camera_index: int, max_index: int = 10) -> int:
+    """
+    Scan for available cameras and let user select one
+
+    Args:
+        config_camera_index: Camera index from config.json
+        max_index: Maximum camera index to check
+
+    Returns:
+        Selected camera index
+    """
+    print("\n" + "=" * 70)
+    print("摄像头检测 / Camera Detection")
+    print("=" * 70)
+    print(f"正在扫描摄像头 (索引 0-{max_index})...")
+    print(f"Scanning cameras (index 0-{max_index})...\n")
+
+    available_cameras = []
+
+    # Scan all cameras
+    for i in range(max_index + 1):
+        # Suppress OpenCV warnings during scanning
+        camera_info = test_camera(i, timeout_ms=1500)
+
+        if camera_info:
+            available_cameras.append(camera_info)
+
+    if not available_cameras:
+        print("❌ 未找到可用摄像头！")
+        print("❌ No available cameras found!")
+        print("\n可能的原因 / Possible reasons:")
+        print("  • 摄像头未连接 / Camera not connected")
+        print("  • 摄像头权限未授予 / Camera permission not granted")
+        print("  • 摄像头被其他程序占用 / Camera in use by another program")
+        print("=" * 70)
+        return None
+
+    print(f"找到 {len(available_cameras)} 个可用摄像头 / Found {len(available_cameras)} camera(s)\n")
+    print("=" * 70)
+
+    # Display available cameras
+    for i, cam in enumerate(available_cameras):
+        is_config_default = cam['index'] == config_camera_index
+        default_marker = " ← 配置文件默认 (config default)" if is_config_default else ""
+
+        print(f"[{i+1}] 索引 {cam['index']}: {cam['width']}x{cam['height']} @ {cam['fps']}fps "
+              f"({cam['backend']}){default_marker}")
+
+    print("=" * 70)
+
+    # Check if config camera is available
+    config_cam_available = any(cam['index'] == config_camera_index for cam in available_cameras)
+
+    # User selection
+    if config_cam_available:
+        print(f"\n配置文件中的摄像头 (索引 {config_camera_index}) 可用")
+        print(f"Config camera (index {config_camera_index}) is available")
+        print(f"\n请选择 / Select:")
+        print(f"  [Enter] - 使用配置文件中的摄像头 {config_camera_index} / Use config camera {config_camera_index}")
+        print(f"  [1-{len(available_cameras)}] - 选择其他摄像头 / Select another camera")
+        print(f"  [q] - 退出程序 / Quit")
+    else:
+        print(f"\n⚠️  配置文件中的摄像头 (索引 {config_camera_index}) 不可用")
+        print(f"⚠️  Config camera (index {config_camera_index}) is not available")
+        print(f"\n请选择摄像头 [1-{len(available_cameras)}] 或 [q] 退出 / Select camera [1-{len(available_cameras)}] or [q] to quit:")
+
+    while True:
+        try:
+            choice = input("\n选择 / Choice: ").strip()
+
+            # Quit
+            if choice.lower() == 'q':
+                print("退出程序 / Exiting...")
+                return None
+
+            # Use config default (if available)
+            if choice == '' and config_cam_available:
+                selected_index = config_camera_index
+                print(f"✓ 使用配置摄像头 {selected_index}")
+                print(f"✓ Using config camera {selected_index}")
+                return selected_index
+
+            # Select by number
+            choice_num = int(choice)
+            if 1 <= choice_num <= len(available_cameras):
+                selected_index = available_cameras[choice_num - 1]['index']
+                print(f"✓ 已选择摄像头 {selected_index}")
+                print(f"✓ Selected camera {selected_index}")
+                return selected_index
+            else:
+                print(f"❌ 无效选择，请输入 1-{len(available_cameras)} / Invalid choice, enter 1-{len(available_cameras)}")
+
+        except ValueError:
+            print(f"❌ 无效输入 / Invalid input")
+        except KeyboardInterrupt:
+            print("\n\n退出程序 / Exiting...")
+            return None
+
+
 def main():
-    print("=" * 60)
+    print("=" * 70)
     print("VibeVtuber Face Tracker")
-    print("=" * 60)
+    print("=" * 70)
 
     # Load configuration
     try:
@@ -32,6 +173,16 @@ def main():
     except Exception as e:
         print(f"[Error] Failed to load config: {e}")
         return
+
+    # Select camera
+    selected_camera_index = select_camera(config['camera']['index'], max_index=10)
+
+    if selected_camera_index is None:
+        print("[Info] No camera selected, exiting...")
+        return
+
+    # Update camera index in config
+    config['camera']['index'] = selected_camera_index
 
     # Check if model file exists
     model_path = config['mediapipe']['model_path']
@@ -43,7 +194,7 @@ def main():
         return
 
     # Initialize face tracker
-    print("[MediaPipe] Initializing face landmarker...")
+    print("\n[MediaPipe] Initializing face landmarker...")
     try:
         tracker = FaceTracker(
             model_path=model_path,
@@ -63,7 +214,7 @@ def main():
     )
 
     # Initialize webcam
-    print(f"[Camera] Opening camera {config['camera']['index']}...")
+    print(f"\n[Camera] Opening camera {config['camera']['index']}...")
     cap = cv2.VideoCapture(config['camera']['index'])
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, config['camera']['width'])
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config['camera']['height'])
@@ -82,7 +233,7 @@ def main():
     print("  'q' - Quit")
     print("  's' - Toggle debug window")
     print("  'd' - Toggle detailed terminal output (shows ALL parameters sent to Unity)")
-    print("=" * 60)
+    print("=" * 70)
 
     # Main loop variables
     show_window = config['debug']['show_window']

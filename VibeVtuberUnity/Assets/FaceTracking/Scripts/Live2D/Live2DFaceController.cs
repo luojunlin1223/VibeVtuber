@@ -12,7 +12,7 @@ namespace VibeVtuber.FaceTracking
     /// Fully configurable in Inspector
     /// </summary>
     [RequireComponent(typeof(CubismModel))]
-    public class Live2DFaceController : SerializedMonoBehaviour
+    public class Live2DFaceController : MonoBehaviour
     {
         [Title("Live2D Face Controller", "Maps MediaPipe face tracking data to Live2D Cubism model parameters", TitleAlignments.Centered, HorizontalLine = true)]
 

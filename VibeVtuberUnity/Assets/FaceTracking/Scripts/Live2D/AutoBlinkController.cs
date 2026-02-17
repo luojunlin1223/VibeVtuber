@@ -8,7 +8,7 @@ namespace VibeVtuber.FaceTracking
     /// 自动眨眼控制器
     /// 让 Live2D 角色定期自动眨眼，可配置频率、随机性和眨眼参数
     /// </summary>
-    public class AutoBlinkController : SerializedMonoBehaviour
+    public class AutoBlinkController : MonoBehaviour
     {
         [Title("自动眨眼控制器 (Auto Blink Controller)", "让角色像真人一样自然眨眼", TitleAlignments.Centered, HorizontalLine = true)]
 

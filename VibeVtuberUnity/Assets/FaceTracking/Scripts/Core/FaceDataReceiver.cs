@@ -15,7 +15,7 @@ namespace VibeVtuber.FaceTracking
     /// 通过UDP接收Python面部追踪数据
     /// 使用后台线程处理网络I/O，避免阻塞Unity主线程
     /// </summary>
-    public class FaceDataReceiver : SerializedMonoBehaviour
+    public class FaceDataReceiver : MonoBehaviour
     {
         [Title("Face Data Receiver", "接收并显示MediaPipe面部追踪数据（55个参数）", TitleAlignments.Centered, HorizontalLine = true)]
 
