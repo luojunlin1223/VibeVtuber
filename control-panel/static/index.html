@@ -1,0 +1,1045 @@
+<!DOCTYPE html>
+<html lang="zh" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VibeVtuber Control Panel v2</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            panel: '#0f0f1a',
+            card:  '#1a1a2e',
+            border: '#2a2a4a',
+          }
+        }
+      }
+    }
+  </script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <style>
+    body { background-color: #0f0f1a; }
+    .log-area { font-family: 'Menlo', 'Consolas', monospace; font-size: 12px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .dot-on  { background: #4ade80; box-shadow: 0 0 6px #4ade80; }
+    .dot-off { background: #4b5563; }
+    input[type=range] { accent-color: #818cf8; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #1a1a2e; }
+    ::-webkit-scrollbar-thumb { background: #3730a3; border-radius: 3px; }
+  </style>
+</head>
+<body class="text-slate-200 min-h-screen" x-data="app()" x-init="init()">
+
+  <!-- Header -->
+  <header class="border-b border-[#2a2a4a] px-6 py-4 flex items-center gap-3">
+    <span class="text-2xl font-bold bg-gradient-to-r from-indigo-400 to-pink-400 bg-clip-text text-transparent">
+      VibeVtuber
+    </span>
+    <span class="text-slate-500 text-sm">Control Panel</span>
+    <div class="ml-auto flex items-center gap-2 text-xs text-slate-500">
+      <span class="dot" :class="wsConnected ? 'dot-on' : 'dot-off'"></span>
+      <span x-text="wsConnected ? '已连接' : '未连接'"></span>
+    </div>
+  </header>
+
+  <!-- Main grid -->
+  <main class="p-6 grid grid-cols-1 lg:grid-cols-2 gap-4 max-w-5xl mx-auto">
+
+    <!-- ── Face Tracker card ── -->
+    <div class="bg-[#1a1a2e] border border-[#2a2a4a] rounded-xl p-5 flex flex-col gap-4">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="dot" :class="status.face_tracker ? 'dot-on' : 'dot-off'"></span>
+          <h2 class="font-semibold text-base">面部捕捉</h2>
+        </div>
+        <span class="text-xs px-2 py-0.5 rounded-full"
+              :class="status.face_tracker
+                ? 'bg-green-900/50 text-green-400'
+                : 'bg-slate-800 text-slate-500'"
+              x-text="status.face_tracker ? '运行中' : '未启动'">
+        </span>
+      </div>
+
+      <!-- Controls -->
+      <div class="flex gap-2">
+        <button @click="startFaceTracker()"
+                :disabled="status.face_tracker"
+                class="flex-1 py-2 rounded-lg text-sm font-medium transition
+                       bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed">
+          启动
+        </button>
+        <button @click="stopFaceTracker()"
+                :disabled="!status.face_tracker"
+                class="flex-1 py-2 rounded-lg text-sm font-medium transition
+                       bg-slate-700 hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed">
+          停止
+        </button>
+        <button @click="restartFaceTracker()"
+                class="px-3 py-2 rounded-lg text-sm transition bg-slate-700 hover:bg-slate-600"
+                title="重启">
+          ↻
+        </button>
+      </div>
+
+      <!-- Camera & smoothing -->
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs text-slate-400 mb-1 block">摄像头索引</label>
+          <input type="number" min="0" max="10"
+                 x-model.number="config.tracker.camera.index"
+                 @change="saveTrackerConfig()"
+                 class="w-full bg-[#0f0f1a] border border-[#2a2a4a] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500" />
+        </div>
+        <div>
+          <label class="text-xs text-slate-400 mb-1 block">
+            平滑系数 <span class="text-indigo-400" x-text="config.tracker.smoothing?.alpha?.toFixed(2)"></span>
+          </label>
+          <input type="range" min="0.05" max="1" step="0.05"
+                 x-model.number="config.tracker.smoothing.alpha"
+                 @change="saveTrackerConfig()"
+                 class="w-full mt-2" />
+        </div>
+      </div>
+
+      <!-- UDP -->
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs text-slate-400 mb-1 block">UDP 主机</label>
+          <input type="text"
+                 x-model="config.tracker.network.host"
+                 @change="saveTrackerConfig()"
+                 class="w-full bg-[#0f0f1a] border border-[#2a2a4a] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500" />
+        </div>
+        <div>
+          <label class="text-xs text-slate-400 mb-1 block">UDP 端口</label>
+          <input type="number"
+                 x-model.number="config.tracker.network.port"
+                 @change="saveTrackerConfig()"
+                 class="w-full bg-[#0f0f1a] border border-[#2a2a4a] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500" />
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Unity card ── -->
+    <div class="bg-[#1a1a2e] border border-[#2a2a4a] rounded-xl p-5 flex flex-col gap-4">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="dot" :class="status.unity ? 'dot-on' : 'dot-off'"></span>
+          <h2 class="font-semibold text-base">Unity 渲染</h2>
+        </div>
+        <span class="text-xs px-2 py-0.5 rounded-full"
+              :class="status.unity
+                ? 'bg-green-900/50 text-green-400'
+                : 'bg-slate-800 text-slate-500'"
+              x-text="status.unity ? '运行中' : '未启动'">
+        </span>
+      </div>
+
+      <p class="text-xs text-slate-500">Unity 应用由你自行管理打包，此处仅负责启动。</p>
+
+      <div>
+        <div class="flex items-center justify-between mb-1">
+          <label class="text-xs text-slate-400">应用路径</label>
+          <button @click="discoverApps()"
+                  class="text-xs text-indigo-400 hover:text-indigo-300 transition">
+            ↻ 重新扫描
+          </button>
+        </div>
+
+        <!-- Dropdown when apps are discovered -->
+        <template x-if="discoveredApps.length > 0">
+          <select x-model="config.panel.unity_app_path"
+                  @change="savePanelConfig()"
+                  class="w-full bg-[#0f0f1a] border border-[#2a2a4a] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 mb-2">
+            <option value="">— 选择应用 —</option>
+            <template x-for="app in discoveredApps" :key="app">
+              <option :value="app" x-text="app.split('/').pop()"></option>
+            </template>
+            <option value="__manual__">手动输入路径...</option>
+          </select>
+        </template>
+
+        <!-- Manual input: always shown when no apps found, or "手动输入" selected -->
+        <template x-if="discoveredApps.length === 0 || config.panel.unity_app_path === '__manual__'">
+          <input type="text" placeholder="粘贴 .app 或 .exe 的完整路径"
+                 x-model="config.panel.unity_app_path"
+                 @change="savePanelConfig()"
+                 class="w-full bg-[#0f0f1a] border border-[#2a2a4a] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500" />
+        </template>
+
+        <p x-show="discoveredApps.length === 0" class="text-xs text-slate-600 mt-1">
+          未在项目目录中找到可用应用
+        </p>
+      </div>
+
+      <div class="flex gap-2">
+        <button @click="startUnity()"
+                :disabled="status.unity || !config.panel.unity_app_path || config.panel.unity_app_path === '__manual__'"
+                class="flex-1 py-2 rounded-lg text-sm font-medium transition
+                       bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed">
+          启动
+        </button>
+        <button @click="stopUnity()"
+                :disabled="!status.unity"
+                class="flex-1 py-2 rounded-lg text-sm font-medium transition
+                       bg-slate-700 hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed">
+          停止
+        </button>
+      </div>
+
+      <div x-show="unityError" class="text-xs text-red-400 bg-red-900/20 rounded-lg px-3 py-2"
+           x-text="unityError"></div>
+    </div>
+
+    <!-- ── Text Driver card (spans full width) ── -->
+    <div class="lg:col-span-2 bg-[#1a1a2e] border border-[#2a2a4a] rounded-xl p-5 flex flex-col gap-4">
+      <div class="flex items-center gap-2">
+        <h2 class="font-semibold text-base">文本驱动</h2>
+        <span class="text-xs text-slate-500">Qwen NLP</span>
+      </div>
+
+      <!-- API Key -->
+      <div>
+        <label class="text-xs text-slate-400 mb-1 block">Qwen API Key</label>
+        <input type="password" placeholder="sk-..."
+               x-model="config.text_driver.qwen.api_key"
+               @change="saveTextDriverConfig()"
+               class="w-full bg-[#0f0f1a] border border-[#2a2a4a] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 font-mono" />
+        <p class="text-xs text-slate-600 mt-1">
+          在
+          <a href="https://dashscope.console.aliyun.com/apiKey" target="_blank"
+             class="text-indigo-400 hover:underline">阿里云百炼控制台</a>
+          获取，自动保存
+        </p>
+      </div>
+
+      <!-- Text input -->
+      <div class="flex flex-col gap-2">
+        <label class="text-xs text-slate-400">输入文本</label>
+        <textarea
+          x-model="tdText"
+          @keydown.ctrl.enter.prevent="sendText()"
+          placeholder="输入想让虚拟人说的话… (Ctrl+Enter 发送)"
+          rows="3"
+          class="w-full bg-[#0f0f1a] border border-[#2a2a4a] rounded-lg px-3 py-2 text-sm
+                 focus:outline-none focus:border-indigo-500 resize-none leading-relaxed">
+        </textarea>
+        <div class="flex items-center gap-2">
+          <button @click="sendText()"
+                  :disabled="tdSending || !tdText.trim() || !config.text_driver.qwen.api_key"
+                  class="px-5 py-2 rounded-lg text-sm font-medium transition
+                         bg-pink-600 hover:bg-pink-500 disabled:opacity-40 disabled:cursor-not-allowed">
+            <span x-text="tdSending ? '分析中…' : '发送'"></span>
+          </button>
+          <span x-show="tdResult" class="text-xs"
+                :class="tdResult?.ok ? 'text-green-400' : 'text-red-400'"
+                x-text="tdResult?.ok
+                  ? '情感: ' + tdResult.emotion + '  强度: ' + (tdResult.intensity * 100 | 0) + '%'
+                  : '错误: ' + tdResult.error">
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── TTS Debug card (spans full width) ── -->
+    <div class="lg:col-span-2 bg-[#1a1a2e] border border-[#2a2a4a] rounded-xl p-5 flex flex-col gap-4">
+      <div class="flex items-center gap-2">
+        <h2 class="font-semibold text-base">TTS 调试</h2>
+        <span class="text-xs text-slate-500">阿里云 ISI → 音素时间戳</span>
+      </div>
+
+      <!-- ISI credentials -->
+      <div class="grid grid-cols-3 gap-3">
+        <div>
+          <label class="text-xs text-slate-400 mb-1 block">ISI AppKey</label>
+          <input type="text" placeholder="项目 AppKey"
+                 x-model="config.text_driver.isi.appkey"
+                 @change="saveTextDriverConfig()"
+                 class="w-full bg-[#0f0f1a] border border-[#2a2a4a] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 font-mono" />
+        </div>
+        <div>
+          <label class="text-xs text-slate-400 mb-1 block">AccessKey ID</label>
+          <input type="text" placeholder="LTAI5t…"
+                 x-model="config.text_driver.isi.ak_id"
+                 @change="saveTextDriverConfig()"
+                 class="w-full bg-[#0f0f1a] border border-[#2a2a4a] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 font-mono" />
+        </div>
+        <div>
+          <label class="text-xs text-slate-400 mb-1 block">AccessKey Secret</label>
+          <input type="password" placeholder="永久密钥，自动换取 Token"
+                 x-model="config.text_driver.isi.ak_secret"
+                 @change="saveTextDriverConfig()"
+                 class="w-full bg-[#0f0f1a] border border-[#2a2a4a] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 font-mono" />
+        </div>
+      </div>
+      <p class="text-xs text-slate-600 -mt-2">
+        前往
+        <a href="https://nls-portal.console.aliyun.com/applist" target="_blank"
+           class="text-indigo-400 hover:underline">智能语音交互控制台</a>
+        获取 AppKey；AccessKey 在
+        <a href="https://ram.console.aliyun.com/manage/ak" target="_blank"
+           class="text-indigo-400 hover:underline">RAM 控制台</a>
+        创建，程序自动换取并缓存 Token
+      </p>
+
+      <!-- Voice selector -->
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs text-slate-400 mb-1 block">发音人</label>
+          <select x-model="ttsVoice"
+                  class="w-full bg-[#0f0f1a] border border-[#2a2a4a] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500">
+            <optgroup label="─── 内置音色 (ISI) ───">
+              <template x-for="v in ttsVoices.filter(v => !v.custom)" :key="v.id">
+                <option :value="v.id" x-text="v.label"></option>
+              </template>
+            </optgroup>
+            <template x-if="ttsVoices.some(v => v.custom)">
+              <optgroup label="─── ✦ 自定义音色 (CosyVoice) ───">
+                <template x-for="v in ttsVoices.filter(v => v.custom)" :key="v.id">
+                  <option :value="v.id" x-text="'✦ ' + v.label"></option>
+                </template>
+              </optgroup>
+            </template>
+          </select>
+        </div>
+      </div>
+
+      <!-- Text input -->
+      <div class="flex flex-col gap-2">
+        <label class="text-xs text-slate-400">输入文本</label>
+        <textarea
+          x-model="ttsText"
+          @keydown.ctrl.enter.prevent="synthesizeTTS()"
+          placeholder="输入要合成的文字… (Ctrl+Enter 合成)"
+          rows="2"
+          class="w-full bg-[#0f0f1a] border border-[#2a2a4a] rounded-lg px-3 py-2 text-sm
+                 focus:outline-none focus:border-indigo-500 resize-none leading-relaxed">
+        </textarea>
+        <div class="flex items-center gap-3">
+          <button @click="synthesizeTTS()"
+                  :disabled="ttsSending || !ttsText.trim() || !config.text_driver.isi.appkey || !config.text_driver.isi.ak_id || !config.text_driver.isi.ak_secret"
+                  class="px-5 py-2 rounded-lg text-sm font-medium transition
+                         bg-violet-600 hover:bg-violet-500 disabled:opacity-40 disabled:cursor-not-allowed">
+            <span x-text="ttsSending ? '合成中…' : '合成'"></span>
+          </button>
+          <span x-show="ttsResult" class="text-xs"
+                :class="ttsResult?.ok ? 'text-green-400' : 'text-red-400'"
+                x-text="ttsResult?.ok
+                  ? '音素数: ' + ttsResult.phoneme_count + '  音频: ' + (ttsResult.audio_size/1024|0) + ' KB  耗时: ' + ttsResult.elapsed_s + 's'
+                  : '错误: ' + ttsResult.error">
+          </span>
+        </div>
+      </div>
+
+      <!-- Audio player -->
+      <div x-show="ttsAudioUrl" class="flex flex-col gap-1">
+        <label class="text-xs text-slate-400">播放</label>
+        <audio :src="ttsAudioUrl" controls
+               class="w-full h-9 rounded-lg" style="filter: invert(0.85) hue-rotate(200deg)"></audio>
+      </div>
+
+      <!-- Phoneme flat list (key debug data) -->
+      <div x-show="ttsResult?.ok && ttsResult?.phoneme_flat?.length" class="flex flex-col gap-1">
+        <label class="text-xs text-slate-400">
+          音素时间轴
+          <span class="text-slate-600 ml-1">（字 / 音素 / 声调 / begin_ms → end_ms）</span>
+        </label>
+        <div class="bg-[#0a0a14] rounded-lg p-3 overflow-x-auto">
+          <table class="text-xs w-full border-collapse">
+            <thead>
+              <tr class="text-slate-500 border-b border-[#2a2a4a]">
+                <th class="text-left pb-1 pr-4">字</th>
+                <th class="text-left pb-1 pr-4">音素</th>
+                <th class="text-left pb-1 pr-4">声调</th>
+                <th class="text-left pb-1 pr-4">begin ms</th>
+                <th class="text-left pb-1">end ms</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="(p, i) in ttsResult?.phoneme_flat" :key="i">
+                <tr class="border-b border-[#1a1a2e] hover:bg-[#1a1a2e]">
+                  <td class="py-0.5 pr-4 text-pink-300" x-text="p.char"></td>
+                  <td class="py-0.5 pr-4 text-indigo-300 font-mono" x-text="p.phoneme"></td>
+                  <td class="py-0.5 pr-4 text-slate-400" x-text="p.tone"></td>
+                  <td class="py-0.5 pr-4 text-slate-300" x-text="p.begin_ms"></td>
+                  <td class="py-0.5 text-slate-300" x-text="p.end_ms"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Raw response packet -->
+      <div x-show="ttsResult" class="flex flex-col gap-1">
+        <label class="text-xs text-slate-400">原始数据包</label>
+        <pre class="log-area bg-[#0a0a14] rounded-lg p-3 text-xs text-slate-300
+                    overflow-auto max-h-48 leading-5 whitespace-pre-wrap break-all"
+             x-text="JSON.stringify({...ttsResult, audio_base64: ttsResult?.audio_base64 ? '[base64 WAV ' + (ttsResult.audio_size/1024|0) + ' KB]' : undefined}, null, 2)"></pre>
+      </div>
+    </div>
+
+    <!-- ── Voice Clone card (spans full width) ── -->
+    <div class="lg:col-span-2 bg-[#1a1a2e] border border-[#2a2a4a] rounded-xl p-5 flex flex-col gap-4">
+      <div class="flex items-center gap-2">
+        <h2 class="font-semibold text-base">自定义音色管理</h2>
+        <span class="text-xs text-slate-500">CosyVoice 声音复刻 · 使用 Qwen API Key</span>
+      </div>
+
+      <!-- Create voice -->
+      <div class="border border-[#2a2a4a] rounded-lg p-4 flex flex-col gap-3">
+        <p class="text-xs font-medium text-slate-300">创建音色</p>
+
+        <div class="grid grid-cols-2 gap-3">
+          <!-- Prefix -->
+          <div>
+            <label class="text-xs text-slate-400 mb-1 block">前缀 Prefix <span class="text-slate-600">（英数字，≤10位）</span></label>
+            <input type="text" maxlength="10" placeholder="myvoice"
+                   x-model="vc.prefix"
+                   class="w-full bg-[#0f0f1a] border border-[#2a2a4a] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 font-mono" />
+          </div>
+          <!-- Target model -->
+          <div>
+            <label class="text-xs text-slate-400 mb-1 block">目标合成模型</label>
+            <select x-model="vc.targetModel"
+                    class="w-full bg-[#0f0f1a] border border-[#2a2a4a] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500">
+              <option value="cosyvoice-v3-plus">cosyvoice-v3-plus（推荐）</option>
+              <option value="cosyvoice-v3-flash">cosyvoice-v3-flash（快速）</option>
+              <option value="cosyvoice-v2">cosyvoice-v2</option>
+              <option value="cosyvoice-v1">cosyvoice-v1</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Audio source -->
+        <div class="flex flex-col gap-2">
+          <div class="flex gap-2 text-xs">
+            <button @click="vc.audioMode='upload'"
+                    :class="vc.audioMode==='upload' ? 'text-indigo-400 border-b border-indigo-400' : 'text-slate-500'"
+                    class="pb-0.5">上传文件</button>
+            <button @click="vc.audioMode='url'"
+                    :class="vc.audioMode==='url' ? 'text-indigo-400 border-b border-indigo-400' : 'text-slate-500'"
+                    class="pb-0.5">输入 URL</button>
+          </div>
+
+          <!-- Upload tab -->
+          <div x-show="vc.audioMode==='upload'" class="flex flex-col gap-2">
+            <label class="flex flex-col items-center justify-center border-2 border-dashed border-[#2a2a4a] rounded-lg p-4 cursor-pointer hover:border-indigo-500 transition"
+                   @dragover.prevent @drop.prevent="vcDropFile($event)">
+              <input type="file" accept=".wav,.mp3,.m4a" class="hidden" @change="vcPickFile($event)" />
+              <span class="text-slate-400 text-sm" x-text="vc.uploadedName || '点击或拖入音频文件（WAV / MP3 / M4A，10–60 秒）'"></span>
+              <span x-show="vc.uploadedSize" class="text-xs text-slate-600 mt-1"
+                    x-text="(vc.uploadedSize/1024|0) + ' KB'"></span>
+            </label>
+            <div x-show="vc.localUrl" class="flex items-center gap-2">
+              <audio :src="vc.localUrl" controls class="h-8 flex-1" style="filter:invert(0.85) hue-rotate(200deg)"></audio>
+              <span class="text-xs text-slate-600 truncate max-w-xs" x-text="vc.localUrl"></span>
+            </div>
+            <p class="text-xs text-amber-500/80" x-show="vc.localUrl">
+              ⚠ 本地地址仅用于预览。CosyVoice API 需要公开可访问的 URL —— 若控制面板不在公网，请将文件上传到 OSS 后切换到「输入 URL」模式。
+            </p>
+          </div>
+
+          <!-- URL tab -->
+          <div x-show="vc.audioMode==='url'">
+            <input type="url" placeholder="https://your-oss-bucket.oss-cn-hangzhou.aliyuncs.com/voice.wav"
+                   x-model="vc.audioUrl"
+                   class="w-full bg-[#0f0f1a] border border-[#2a2a4a] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 font-mono" />
+          </div>
+        </div>
+
+        <!-- Language hints -->
+        <div class="flex items-center gap-3">
+          <span class="text-xs text-slate-400">语言提示</span>
+          <template x-for="lang in ['zh','en','ja','ko','fr','de','ru']" :key="lang">
+            <label class="flex items-center gap-1 text-xs cursor-pointer">
+              <input type="checkbox" :value="lang" x-model="vc.langHints"
+                     class="accent-indigo-500" />
+              <span x-text="lang"></span>
+            </label>
+          </template>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <button @click="vcCreate()"
+                  :disabled="vc.creating || !vc.prefix || !(vc.audioMode==='url' ? vc.audioUrl : vc.localUrl)"
+                  class="px-5 py-2 rounded-lg text-sm font-medium transition
+                         bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed">
+            <span x-text="vc.creating ? '创建中…' : '创建音色'"></span>
+          </button>
+          <span x-show="vc.createResult" class="text-xs"
+                :class="vc.createResult?.ok ? 'text-green-400' : 'text-red-400'"
+                x-text="vc.createResult?.ok
+                  ? '✓ ' + (vc.createResult.output?.voice_id || '创建成功')
+                  : '✗ ' + vc.createResult.error"></span>
+        </div>
+      </div>
+
+      <!-- Voice list -->
+      <div class="border border-[#2a2a4a] rounded-lg p-4 flex flex-col gap-3">
+        <div class="flex items-center justify-between">
+          <p class="text-xs font-medium text-slate-300">音色列表</p>
+          <button @click="vcList()"
+                  :disabled="vc.listing"
+                  class="px-3 py-1 rounded text-xs bg-slate-700 hover:bg-slate-600 disabled:opacity-40 transition">
+            <span x-text="vc.listing ? '查询中…' : '刷新'"></span>
+          </button>
+        </div>
+
+        <div x-show="vc.voices.length === 0 && !vc.listing"
+             class="text-xs text-slate-600">暂无音色，点击刷新加载</div>
+
+        <div x-show="vc.voices.length > 0" class="overflow-x-auto">
+          <table class="text-xs w-full border-collapse">
+            <thead>
+              <tr class="text-slate-500 border-b border-[#2a2a4a]">
+                <th class="text-left pb-1 pr-3">Voice ID</th>
+                <th class="text-left pb-1 pr-3">状态</th>
+                <th class="text-left pb-1 pr-3">创建时间</th>
+                <th class="text-left pb-1">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="v in vc.voices" :key="v.voice_id">
+                <tr class="border-b border-[#1a1a2e] hover:bg-[#1a1a2e]">
+                  <td class="py-1 pr-3 font-mono text-indigo-300" x-text="v.voice_id"></td>
+                  <td class="py-1 pr-3">
+                    <span class="px-1.5 py-0.5 rounded text-[10px]"
+                          :class="{
+                            'bg-green-900/50 text-green-400': v.status === 'OK',
+                            'bg-yellow-900/50 text-yellow-400': v.status === 'DEPLOYING',
+                            'bg-red-900/50 text-red-400': v.status === 'UNDEPLOYED',
+                          }"
+                          x-text="v.status === 'OK' ? '可用' : v.status === 'DEPLOYING' ? '审核中' : '已拒绝'">
+                    </span>
+                  </td>
+                  <td class="py-1 pr-3 text-slate-400" x-text="v.gmt_create"></td>
+                  <td class="py-1 flex gap-2">
+                    <button @click="vcQuery(v.voice_id)"
+                            class="text-indigo-400 hover:text-indigo-300 transition">详情</button>
+                    <button @click="vcDelete(v.voice_id)"
+                            class="text-red-400 hover:text-red-300 transition">删除</button>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Query detail panel -->
+        <div x-show="vc.queryResult" class="flex flex-col gap-1">
+          <label class="text-xs text-slate-400">音色详情</label>
+          <pre class="log-area bg-[#0a0a14] rounded-lg p-3 text-xs text-slate-300
+                      overflow-auto max-h-40 leading-5 whitespace-pre-wrap break-all"
+               x-text="JSON.stringify(vc.queryResult, null, 2)"></pre>
+        </div>
+
+        <!-- List error -->
+        <p x-show="vc.listError" class="text-xs text-red-400" x-text="vc.listError"></p>
+      </div>
+    </div>
+
+    <!-- ── Speak & Animate card (spans full width) ── -->
+    <div class="lg:col-span-2 bg-[#1a1a2e] border border-[#2a2a4a] rounded-xl p-5 flex flex-col gap-4">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="dot" :class="saPlaying ? 'dot-on' : 'dot-off'"></span>
+          <h2 class="font-semibold text-base">朗读动画</h2>
+          <span class="text-xs text-slate-500">TTS + 口型 + 情感同步</span>
+        </div>
+        <span class="text-xs px-2 py-0.5 rounded-full"
+              :class="saPlaying
+                ? 'bg-green-900/50 text-green-400'
+                : 'bg-slate-800 text-slate-500'"
+              x-text="saPlaying ? '播放中' : '待命'">
+        </span>
+      </div>
+
+      <!-- Voice selector -->
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs text-slate-400 mb-1 block">音色</label>
+          <select x-model="saVoice"
+                  class="w-full bg-[#0f0f1a] border border-[#2a2a4a] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500">
+            <optgroup label="─── 内置音色 (ISI) ───">
+              <template x-for="v in ttsVoices.filter(v => !v.custom)" :key="v.id">
+                <option :value="v.id" x-text="v.label"></option>
+              </template>
+            </optgroup>
+            <template x-if="ttsVoices.some(v => v.custom)">
+              <optgroup label="─── ✦ 自定义音色 (CosyVoice) ───">
+                <template x-for="v in ttsVoices.filter(v => v.custom)" :key="v.id">
+                  <option :value="v.id" x-text="'✦ ' + v.label"></option>
+                </template>
+              </optgroup>
+            </template>
+          </select>
+        </div>
+      </div>
+
+      <!-- Text input -->
+      <div class="flex flex-col gap-2">
+        <label class="text-xs text-slate-400">文本内容</label>
+        <textarea
+          x-model="saText"
+          @keydown.ctrl.enter.prevent="speakAnimate()"
+          placeholder="输入要朗读的文字，将同步驱动 Unity Live2D 口型和表情… (Ctrl+Enter 发送)"
+          rows="3"
+          class="w-full bg-[#0f0f1a] border border-[#2a2a4a] rounded-lg px-3 py-2 text-sm
+                 focus:outline-none focus:border-indigo-500 resize-none leading-relaxed">
+        </textarea>
+        <div class="flex items-center gap-3">
+          <button @click="speakAnimate()"
+                  :disabled="saSending || !saText.trim() || !config.text_driver.isi.appkey || !config.text_driver.isi.ak_id || !config.text_driver.isi.ak_secret"
+                  class="px-5 py-2 rounded-lg text-sm font-medium transition
+                         bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed">
+            <span x-text="saSending ? '合成中…' : '朗读并驱动动画'"></span>
+          </button>
+
+          <!-- Playing progress indicator -->
+          <template x-if="saPlaying">
+            <div class="flex items-center gap-2">
+              <div class="flex gap-0.5">
+                <div class="w-1 h-4 bg-emerald-400 rounded-full animate-bounce" style="animation-delay:0ms"></div>
+                <div class="w-1 h-4 bg-emerald-400 rounded-full animate-bounce" style="animation-delay:100ms"></div>
+                <div class="w-1 h-4 bg-emerald-400 rounded-full animate-bounce" style="animation-delay:200ms"></div>
+              </div>
+              <span class="text-xs text-emerald-400">播放中</span>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <!-- Result -->
+      <div x-show="saResult" class="flex flex-col gap-1">
+        <div x-show="saResult?.ok" class="text-xs text-slate-400 leading-6">
+          情感 <span class="text-pink-300 font-medium" x-text="saResult?.emotion"></span>
+          &nbsp;强度 <span class="text-indigo-300" x-text="saResult?.intensity ? (saResult.intensity * 100 | 0) + '%' : ''"></span>
+          &nbsp;·&nbsp;
+          音素 <span class="text-slate-300" x-text="saResult?.phoneme_count + ' 个'"></span>
+          &nbsp;·&nbsp;
+          时长 <span class="text-slate-300" x-text="saResult?.duration_ms ? (saResult.duration_ms / 1000).toFixed(1) + 's' : ''"></span>
+          &nbsp;·&nbsp;
+          音频 <span class="text-slate-300" x-text="saResult?.audio_size ? (saResult.audio_size / 1024 | 0) + ' KB' : ''"></span>
+        </div>
+        <div x-show="!saResult?.ok" class="text-xs text-red-400"
+             x-text="'错误: ' + saResult?.error"></div>
+      </div>
+
+      <!-- 历史记录 -->
+      <div class="border-t border-[#2a2a4a] pt-3 flex flex-col gap-2">
+        <button @click="saSessionsOpen = !saSessionsOpen; if(saSessionsOpen) loadSessions()"
+                class="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 transition w-fit">
+          <span x-text="saSessionsOpen ? '▾' : '▸'"></span>
+          历史记录
+          <span class="text-slate-600" x-text="'(' + saSessions.length + ')'"></span>
+        </button>
+
+        <div x-show="saSessionsOpen" class="flex flex-col gap-1.5">
+          <div x-show="saSessions.length === 0" class="text-xs text-slate-600">暂无历史</div>
+          <template x-for="s in saSessions" :key="s.id">
+            <div class="bg-[#0f0f1a] rounded-lg px-3 py-2 flex items-center gap-2 text-xs">
+              <span class="shrink-0 px-1.5 py-0.5 rounded text-[10px] bg-indigo-900/50 text-indigo-300"
+                    x-text="s.emotion"></span>
+              <span class="flex-1 text-slate-300 truncate" x-text="s.text"></span>
+              <span class="shrink-0 text-slate-500" x-text="(s.duration_ms/1000).toFixed(1)+'s'"></span>
+              <span class="shrink-0 text-slate-600" x-text="s.created_at.slice(11,16)"></span>
+              <button @click="replaySession(s.id, s.duration_ms)"
+                      :disabled="saReplayingId === s.id"
+                      class="shrink-0 px-2 py-1 rounded bg-emerald-800/60 hover:bg-emerald-700/60
+                             text-emerald-300 disabled:opacity-40 transition">
+                <span x-text="saReplayingId === s.id ? '▶…' : '▶ 重播'"></span>
+              </button>
+              <button @click="deleteSession(s.id)"
+                      class="shrink-0 text-slate-600 hover:text-red-400 transition text-base leading-none">✕</button>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Log panel (spans full width) ── -->
+    <div class="lg:col-span-2 bg-[#1a1a2e] border border-[#2a2a4a] rounded-xl p-5 flex flex-col gap-3">
+      <div class="flex items-center justify-between">
+        <h2 class="font-semibold text-base">日志输出</h2>
+        <button @click="logs = []"
+                class="text-xs text-slate-500 hover:text-slate-300 transition">清空</button>
+      </div>
+
+      <div class="log-area bg-[#0a0a14] rounded-lg p-3 h-48 overflow-y-auto flex flex-col gap-0.5"
+           x-ref="logContainer">
+        <template x-for="(entry, i) in logs" :key="i">
+          <div class="flex gap-2 text-xs leading-5">
+            <span class="shrink-0 text-slate-600" x-text="entry.time"></span>
+            <span class="shrink-0 px-1 rounded text-[10px]"
+                  :class="entry.source === 'text_driver'
+                    ? 'bg-pink-900/60 text-pink-300'
+                    : 'bg-indigo-900/60 text-indigo-300'"
+                  x-text="entry.source === 'text_driver' ? '文本' : '捕捉'">
+            </span>
+            <span class="text-slate-300 break-all" x-text="entry.data"></span>
+          </div>
+        </template>
+        <div x-show="logs.length === 0" class="text-slate-600 text-xs">暂无日志</div>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    function app() {
+      return {
+        wsConnected: false,
+        status: { face_tracker: false, unity: false },
+        config: {
+          tracker: {
+            camera: { index: 1 },
+            smoothing: { alpha: 0.3 },
+            network: { host: '127.0.0.1', port: 11111 },
+          },
+          panel: { unity_app_path: '' },
+          text_driver: {
+            qwen: { api_key: '', model: 'qwen-turbo' },
+            isi:  { appkey: '', ak_id: '', ak_secret: '', voice: 'siyue' },
+          },
+        },
+        logs: [],
+        unityError: '',
+        discoveredApps: [],
+        tdText: '',
+        tdSending: false,
+        tdResult: null,
+        ttsVoices: [],
+        ttsVoice: 'siyue',
+        ttsText: '',
+        ttsSending: false,
+        ttsResult: null,
+        ttsAudioUrl: null,
+
+        // Speak & Animate state
+        saText: '',
+        saVoice: 'siyue',
+        saSending: false,
+        saPlaying: false,
+        saResult: null,
+        saSessions: [],
+        saSessionsOpen: false,
+        saReplayingId: null,
+
+        // Voice clone state
+        vc: {
+          prefix: '',
+          targetModel: 'cosyvoice-v3-plus',
+          audioMode: 'upload',
+          audioUrl: '',
+          localUrl: '',
+          uploadedName: '',
+          uploadedSize: 0,
+          langHints: ['zh'],
+          creating: false,
+          createResult: null,
+          listing: false,
+          voices: [],
+          listError: '',
+          queryResult: null,
+          _pendingFile: null,
+        },
+
+        async init() {
+          const res = await fetch('/api/config')
+          const data = await res.json()
+          this.config.tracker = { ...this.config.tracker, ...data.tracker }
+          this.config.panel   = { ...this.config.panel,   ...data.panel }
+          if (data.text_driver) {
+            this.config.text_driver = {
+              ...this.config.text_driver,
+              ...data.text_driver,
+              qwen: { ...this.config.text_driver.qwen, ...data.text_driver.qwen },
+              isi:  { ...this.config.text_driver.isi,  ...data.text_driver.isi  },
+            }
+          }
+
+          await this.discoverApps()
+          const meta = await (await fetch('/api/tts/meta')).json()
+          this.ttsVoices = meta.voices || []
+          await this.loadSessions()
+          this._connectWs()
+        },
+
+        _connectWs() {
+          const ws = new WebSocket(`ws://${location.host}/ws`)
+          ws.onopen  = () => { this.wsConnected = true }
+          ws.onclose = () => {
+            this.wsConnected = false
+            setTimeout(() => this._connectWs(), 2000)
+          }
+          ws.onmessage = (e) => {
+            const msg = JSON.parse(e.data)
+            if (msg.type === 'status') {
+              this.status.face_tracker = msg.face_tracker
+              this.status.unity        = msg.unity
+            } else if (msg.type === 'log') {
+              this.logs.push({
+                source: msg.source,
+                data:   msg.data,
+                time:   new Date().toLocaleTimeString('zh-CN', { hour12: false }),
+              })
+              if (this.logs.length > 300) this.logs.shift()
+              this.$nextTick(() => {
+                const el = this.$refs.logContainer
+                if (el) el.scrollTop = el.scrollHeight
+              })
+            }
+          }
+        },
+
+        async discoverApps() {
+          const res = await fetch('/api/unity/discover')
+          const data = await res.json()
+          this.discoveredApps = data.apps || []
+        },
+
+        async startFaceTracker() {
+          await fetch('/api/face-tracker/start', { method: 'POST' })
+        },
+        async stopFaceTracker() {
+          await fetch('/api/face-tracker/stop', { method: 'POST' })
+        },
+        async restartFaceTracker() {
+          await fetch('/api/face-tracker/restart', { method: 'POST' })
+        },
+
+        async sendText() {
+          const text = this.tdText.trim()
+          if (!text || this.tdSending) return
+          this.tdSending = true
+          this.tdResult  = null
+          try {
+            const res = await fetch('/api/text-driver/speak', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text }),
+            })
+            this.tdResult = await res.json()
+            if (this.tdResult.ok) this.tdText = ''
+          } finally {
+            this.tdSending = false
+          }
+        },
+
+        async synthesizeTTS() {
+          const text = this.ttsText.trim()
+          if (!text || this.ttsSending) return
+          this.ttsSending = true
+          this.ttsResult  = null
+          this.ttsAudioUrl = null
+          try {
+            const res = await fetch('/api/tts/synthesize', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text, voice: this.ttsVoice }),
+            })
+            this.ttsResult = await res.json()
+            if (this.ttsResult.ok && this.ttsResult.audio_base64) {
+              this.ttsAudioUrl = `data:audio/wav;base64,${this.ttsResult.audio_base64}`
+            }
+          } finally {
+            this.ttsSending = false
+          }
+        },
+
+        async speakAnimate() {
+          const text = this.saText.trim()
+          if (!text || this.saSending) return
+          this.saSending = true
+          this.saResult  = null
+          try {
+            const res = await fetch('/api/speak-animate', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text, voice: this.saVoice }),
+            })
+            this.saResult = await res.json()
+            if (this.saResult.ok) {
+              // Show playing indicator for the estimated duration
+              this.saPlaying = true
+              const durationMs = (this.saResult.duration_ms || 2000) + 400
+              setTimeout(() => { this.saPlaying = false }, durationMs)
+              this.loadSessions()
+            }
+          } finally {
+            this.saSending = false
+          }
+        },
+
+        async loadSessions() {
+          const data = await (await fetch('/api/sessions')).json()
+          this.saSessions = data.sessions || []
+        },
+        async replaySession(id, durationMs) {
+          this.saReplayingId = id
+          this.saPlaying = true
+          await fetch(`/api/sessions/${id}/replay`, { method: 'POST' })
+          setTimeout(() => { this.saPlaying = false; this.saReplayingId = null }, (durationMs || 2000) + 400)
+        },
+        async deleteSession(id) {
+          await fetch(`/api/sessions/${id}`, { method: 'DELETE' })
+          this.saSessions = this.saSessions.filter(s => s.id !== id)
+        },
+
+        async startUnity() {
+          const res = await fetch('/api/unity/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: this.config.panel.unity_app_path }),
+          })
+          const data = await res.json()
+          if (!data.ok) this.unityError = data.error || '启动失败，请检查路径'
+        },
+        async stopUnity() {
+          await fetch('/api/unity/stop', { method: 'POST' })
+        },
+
+        async saveTrackerConfig() {
+          await fetch('/api/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tracker: this.config.tracker }),
+          })
+        },
+        async savePanelConfig() {
+          await fetch('/api/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ panel: this.config.panel }),
+          })
+        },
+        async saveTextDriverConfig() {
+          await fetch('/api/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text_driver: this.config.text_driver }),
+          })
+        },
+
+        // ── Voice clone helpers ────────────────────────────────────────────
+
+        vcPickFile(e) {
+          const file = e.target.files[0]
+          if (file) this._vcUploadFile(file)
+        },
+        vcDropFile(e) {
+          const file = e.dataTransfer.files[0]
+          if (file) this._vcUploadFile(file)
+        },
+        async _vcUploadFile(file) {
+          this.vc.uploadedName = file.name
+          this.vc.uploadedSize = file.size
+          this.vc.localUrl = ''
+          const fd = new FormData()
+          fd.append('file', file)
+          const res = await fetch('/api/voice-clone/upload', { method: 'POST', body: fd })
+          const data = await res.json()
+          if (data.ok) this.vc.localUrl = data.local_url
+        },
+
+        async _refreshTtsVoices() {
+          const meta = await (await fetch('/api/tts/meta')).json()
+          this.ttsVoices = meta.voices || []
+        },
+
+        async vcCreate() {
+          if (this.vc.creating) return
+          this.vc.creating = true
+          this.vc.createResult = null
+          const audioUrl = this.vc.audioMode === 'url' ? this.vc.audioUrl : this.vc.localUrl
+          try {
+            const res = await fetch('/api/voice-clone/action', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                model: 'voice-enrollment',
+                input: {
+                  action: 'create_voice',
+                  target_model: this.vc.targetModel,
+                  prefix: this.vc.prefix,
+                  url: audioUrl,
+                  language_hints: this.vc.langHints,
+                },
+              }),
+            })
+            this.vc.createResult = await res.json()
+            if (this.vc.createResult.ok) {
+              await this.vcList()
+              await this._refreshTtsVoices()
+            }
+          } finally {
+            this.vc.creating = false
+          }
+        },
+
+        async vcList() {
+          this.vc.listing = true
+          this.vc.listError = ''
+          try {
+            const res = await fetch('/api/voice-clone/action', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                model: 'voice-enrollment',
+                input: { action: 'list_voice', page_index: 0, page_size: 50 },
+              }),
+            })
+            const data = await res.json()
+            if (data.ok) {
+              this.vc.voices = data.output?.voice_list || []
+            } else {
+              this.vc.listError = data.error
+            }
+          } finally {
+            this.vc.listing = false
+          }
+        },
+
+        async vcQuery(voiceId) {
+          this.vc.queryResult = null
+          const res = await fetch('/api/voice-clone/action', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: 'voice-enrollment',
+              input: { action: 'query_voice', voice_id: voiceId },
+            }),
+          })
+          const data = await res.json()
+          this.vc.queryResult = data.ok ? data.output ?? data : data
+        },
+
+        async vcDelete(voiceId) {
+          if (!confirm(`确认删除音色 ${voiceId}？`)) return
+          const res = await fetch('/api/voice-clone/action', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: 'voice-enrollment',
+              input: { action: 'delete_voice', voice_id: voiceId },
+            }),
+          })
+          const data = await res.json()
+          if (data.ok) {
+            this.vc.voices = this.vc.voices.filter(v => v.voice_id !== voiceId)
+            if (this.vc.queryResult?.voice_id === voiceId) this.vc.queryResult = null
+            await this._refreshTtsVoices()
+          } else {
+            alert('删除失败: ' + data.error)
+          }
+        },
+      }
+    }
+  </script>
+</body>
+</html>

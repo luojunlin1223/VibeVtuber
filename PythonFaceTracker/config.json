@@ -16,7 +16,7 @@
     "port": 11111
   },
   "smoothing": {
-    "alpha": 0.3
+    "alpha": 0.65
   },
   "debug": {
     "show_window": true,

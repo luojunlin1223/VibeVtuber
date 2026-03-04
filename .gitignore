@@ -89,3 +89,13 @@ PythonFaceTracker/*.pyo
 PythonFaceTracker/*.pyd
 PythonFaceTracker/.Python
 
+# Python Text Driver
+PythonTextDriver/__pycache__/
+PythonTextDriver/*.pyc
+
+# Control Panel
+control-panel/__pycache__/
+control-panel/modules/__pycache__/
+control-panel/data/sessions/
+control-panel/panel_config.json
+control-panel/static/uploads/

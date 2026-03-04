@@ -1,206 +1,158 @@
 # VibeVtuber
 
-A VTuber application built with Unity 6 and Python MediaPipe for real-time facial motion capture.
+A complete VTuber solution with real-time facial motion capture, AI-driven speech animation, and Live2D rendering.
 
 **This project was built fully with VibeCoding (Claude Code).**
 
 ## Features
 
-- ✨ Real-time face tracking using MediaPipe
-- 🎭 Live2D character animation
-- 🚀 Low-latency UDP communication (<50ms)
-- 🎨 52 ARKit-compatible blendshapes
-- 🔧 Customizable sensitivity and smoothing
-- 📊 Debug visualization tools
+- ✨ **Real-time face tracking** — MediaPipe 52 ARKit blendshapes, 30 FPS
+- 🎭 **Live2D character animation** — head rotation, eye, mouth, expression
+- 🗣️ **Text-driven speech animation** — type text → AI generates voice + synced lip movement
+- 🎤 **AI voice changer** — RVC (Retrieval-based Voice Conversion)
+- 👄 **Accurate lip sync** — Rhubarb offline audio analysis, language-agnostic
+- 🔊 **Custom voice cloning** — CosyVoice voice clone via DashScope
+- 💾 **Session history** — every utterance saved, replay without re-generating
+- 🖥️ **Web control panel** — browser-based management at localhost:7777
+- 🚀 **Low-latency** — UDP communication, < 50ms face-to-render
 
 ## Architecture
 
 ```
-┌─────────┐      ┌──────────────┐      ┌─────────┐      ┌──────────┐
-│ Webcam  │─────▶│   MediaPipe  │─────▶│   UDP   │─────▶│  Unity   │
-│         │      │  (Python)    │      │  JSON   │      │  Live2D  │
-└─────────┘      └──────────────┘      └─────────┘      └──────────┘
-                       30 FPS            Port 11111        Real-time
+┌─────────┐    ┌──────────────┐    ┌────────┐    ┌──────────────┐
+│ Webcam  │───▶│  MediaPipe   │───▶│UDP     │───▶│  Unity       │
+│         │    │  (Python)    │    │11111   │    │  Live2D      │
+└─────────┘    └──────────────┘    └────────┘    └──────────────┘
+                    30 FPS          face data       face params
+
+┌─────────┐    ┌──────────────────────────────────┐    ┌────────┐    ┌──────────────┐
+│  Text   │───▶│  Control Panel (FastAPI)          │───▶│UDP     │───▶│  Unity       │
+│  Input  │    │  Qwen NLP → emotion               │    │11112   │    │  TextDriven  │
+│         │    │  ISI/CosyVoice TTS → WAV          │    └────────┘    └──────────────┘
+└─────────┘    │  Rhubarb → mouth keyframes        │    mouth+emotion   Live2D params
+               │  SpeechPlayer → local audio       │
+               └──────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────┐
+│                   Web Control Panel (http://localhost:7777)       │
+│  Face Tracker │ Unity Manager │ Speech Animate │ History │ Logs  │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 ## Quick Start
 
-### 1. Python Setup (5 minutes)
-
 ```bash
-# Install dependencies
-cd PythonFaceTracker
-python -m venv venv
-venv\Scripts\activate  # Windows
-pip install -r requirements.txt
-
-# Download model (see SETUP_GUIDE.md for link)
-# Place in PythonFaceTracker/models/
-
-# Run tracker
-python main.py
+# Start control panel
+cd control-panel
+/opt/miniconda3/bin/conda run -n Vtuber python server.py
+# → open http://localhost:7777
 ```
 
-### 2. Unity Setup (10 minutes)
-
-1. Open `VibeVtuberUnity/` in Unity Hub (Unity 6)
-2. Install Live2D Cubism SDK for Unity
-3. Import your Live2D model
-4. Setup face tracking components (see `SETUP_GUIDE.md`)
-5. Press Play!
-
-## Documentation
-
-- **[SETUP_GUIDE.md](SETUP_GUIDE.md)** - Complete step-by-step setup instructions
-- **[PythonFaceTracker/README.md](PythonFaceTracker/README.md)** - Python tracker documentation
-- **[VibeVtuberUnity/Assets/FaceTracking/README.md](VibeVtuberUnity/Assets/FaceTracking/README.md)** - Unity integration guide
-- **[CLAUDE.md](CLAUDE.md)** - Project structure and development guidelines
+In Unity, attach `TextDrivenController.cs` to the same GameObject as `Live2DFaceController`.
 
 ## Project Structure
 
 ```
 VibeVtuber/
-├── PythonFaceTracker/          # Python facial motion capture
-│   ├── models/                 # MediaPipe model files
-│   ├── config.json             # Configuration
-│   ├── face_tracker.py         # MediaPipe wrapper
-│   ├── network_sender.py       # UDP communication
-│   ├── main.py                 # Entry point
-│   └── requirements.txt        # Dependencies
+├── control-panel/                  # Web control panel (FastAPI + Alpine.js)
+│   ├── server.py                   # Backend API + speak-animate pipeline
+│   ├── static/index.html           # Frontend UI
+│   ├── data/sessions/              # Persisted TTS sessions (audio + keyframes)
+│   └── modules/
+│       ├── process_manager.py
+│       └── config_manager.py
 │
-└── VibeVtuberUnity/            # Unity 6 project
-    ├── Assets/
-    │   ├── FaceTracking/       # Face tracking system
-    │   │   ├── Scripts/
-    │   │   │   ├── Core/       # Data structures & receiver
-    │   │   │   ├── Live2D/     # Live2D integration
-    │   │   │   └── Debug/      # Debug visualizer
-    │   │   └── Scenes/         # Test scenes
-    │   └── Settings/           # URP 2D renderer
-    └── ProjectSettings/
+├── PythonFaceTracker/              # Real-time face capture
+│   ├── face_tracker.py             # MediaPipe wrapper
+│   ├── network_sender.py           # UDP sender → port 11111
+│   ├── config.json
+│   └── main.py
+│
+├── PythonTextDriver/               # Text-driven animation engine
+│   ├── text_analyzer.py            # Qwen NLP → emotion / intensity
+│   ├── tts_isi.py                  # Aliyun ISI TTS + phoneme timestamps
+│   ├── tts_cosyvoice.py            # CosyVoice WebSocket TTS
+│   ├── lip_sync.py                 # Phoneme → Live2D viseme keyframes
+│   ├── rhubarb_lipsync.py          # Rhubarb audio analysis → keyframes
+│   ├── speech_player.py            # Audio playback + timed UDP → port 11112
+│   └── rhubarb                     # Rhubarb v1.14.0 binary (macOS)
+│
+└── VibeVtuberUnity/                # Unity 6 Live2D renderer
+    └── Assets/FaceTracking/Scripts/
+        ├── Core/FaceDataReceiver.cs          # UDP 11111 receiver
+        ├── Live2D/Live2DFaceController.cs    # Live2D parameter driver
+        ├── Live2D/AutoBlinkController.cs     # Auto blink
+        └── TextDriven/TextDrivenController.cs # UDP 11112 → mouth/emotion
+```
+
+## Text-Driven Speech Animation
+
+Type any text in the control panel → the character speaks with lip-synced animation.
+
+**Pipeline:**
+1. **Qwen NLP** analyzes emotion (happy / sad / angry / …) and intensity
+2. **TTS synthesis** — Aliyun ISI (built-in voices) or CosyVoice (cloned voices)
+3. **Rhubarb** analyzes the audio offline, outputs 9 mouth shapes (A–H / X) with millisecond timestamps
+4. **SpeechPlayer** plays audio locally while sending timed UDP frames to Unity
+5. **Unity** applies mouth parameters to the Live2D model in `LateUpdate()`
+
+**Session history:** every utterance is saved to `control-panel/data/sessions/`. Replay any session with one click — no re-generation needed.
+
+## UDP Protocol
+
+| Port | Direction | Content |
+|------|-----------|---------|
+| 11111 | Python → Unity | Face tracking blendshapes (30 FPS) |
+| 11112 | Python → Unity | Lip-sync keyframes + emotion blendshapes (event-based) |
+
+Message format:
+```json
+{"type": "lip_sync",    "blendshapes": {"jawOpen": 0.8, "mouthFunnel": 0.0}}
+{"type": "text_emotion","blendshapes": {"mouthSmileLeft": 0.6, ...}}
+{"type": "reset",       "blendshapes": {}}
 ```
 
 ## Requirements
 
 ### Software
-- Python 3.8+ (3.10 recommended)
-- Unity 6 (6000.3.8f1 or later)
+- Python 3.11 (conda env `Vtuber`)
+- Unity 6 (6000.3.8f1+)
 - Live2D Cubism SDK for Unity
-- Webcam (720p or higher)
+- Odin Inspector (Unity Asset Store)
+- Webcam (720p+)
 
-### Python Packages
-- mediapipe==0.10.14
-- opencv-python==4.10.0.84
-- numpy==1.26.4
-
-### Unity Packages
-- Universal Render Pipeline (URP) 17.3.0
-- 2D Animation 13.0.4
-- Input System 1.18.0
-- Live2D Cubism SDK (external)
+### API Keys (for speech animation)
+- Aliyun ISI: AppKey + AccessKey ID + AccessKey Secret
+- DashScope (Qwen + CosyVoice): API Key
 
 ## Performance
 
-- **Frame Rate**: 30 FPS
-- **Latency**: 30-50ms (camera to display)
-- **CPU Usage**: Python <30%, Unity <20%
-- **Memory**: Python <200MB, Unity <500MB
+| Component | Target | Actual |
+|-----------|--------|--------|
+| Face tracking | 30 FPS | 30 FPS |
+| Face→render latency | < 50ms | ~30ms |
+| Rhubarb analysis | — | ~0.5s per utterance |
+| TTS synthesis | — | 1–3s (ISI/CosyVoice) |
 
-## Features Breakdown
+## Planned / In Progress
 
-### Face Tracking (MediaPipe)
-- ✅ 52 ARKit blendshapes
-- ✅ Head rotation (yaw, pitch, roll)
-- ✅ Eye blink tracking
-- ✅ Eye look direction
-- ✅ Mouth movements (open, smile, frown)
-- ✅ Eyebrow tracking
-- ✅ Exponential Moving Average smoothing
-
-### Unity Integration
-- ✅ Thread-safe UDP receiver
-- ✅ Live2D Cubism parameter mapping
-- ✅ Customizable sensitivity per feature
-- ✅ Additional smoothing layer
-- ✅ Real-time debug visualization
-- ✅ Connection status monitoring
-
-### Planned Features
-- ⏳ Lip sync with audio analysis
+- ⏳ RVC full inference (HuBERT + Faiss) — currently SimpleRVC pitch-shift
 - ⏳ Expression presets (hotkeys)
-- ⏳ Recording and playback
-- ⏳ Multiple Live2D model support
-- ⏳ VMC protocol support (VRChat/VSeeFace)
+- ⏳ Multi Live2D model support
+- ⏳ VMC protocol (VRChat / VSeeFace)
 
-## Troubleshooting
+## Key Design Decisions
 
-### Common Issues
-
-**"WAITING FOR DATA" in Unity**
-- Ensure Python tracker is running
-- Check port 11111 is not blocked
-- Verify both use same port number
-
-**Model not moving**
-- Check `Live2DFaceController` is attached
-- Verify parameter names match your model
-- Enable debug logging to see values
-
-**Jittery movement**
-- Increase smoothing factor
-- Improve lighting conditions
-- Reduce camera resolution
-
-See [SETUP_GUIDE.md](SETUP_GUIDE.md) for detailed troubleshooting.
-
-## Development
-
-This project was built with **VibeCoding** (Claude Code) as a demonstration of AI-assisted development.
-
-### Key Design Decisions
-
-- **UDP over TCP**: Lower latency for real-time tracking
-- **JSON over Binary**: Developer-friendly, debuggable
-- **Background Threading**: Non-blocking network I/O
-- **Event-Driven**: Decoupled components via UnityEvents
-- **Dual Smoothing**: Python EMA + Unity Lerp for stability
-
-### Extending the System
-
-All 52 MediaPipe blendshapes are captured and available in the `FaceData.blendshapes` dictionary. To use additional blendshapes:
-
-```csharp
-// In Live2DFaceController or custom script
-void OnFaceDataReceived(FaceData data)
-{
-    float tongueOut = data.GetBlendshape(BlendshapeNames.TongueOut);
-    float cheekPuff = data.GetBlendshape(BlendshapeNames.CheekPuff);
-
-    // Map to Live2D parameters
-    SetParameter("MyModel_Tongue", tongueOut);
-}
-```
-
-## License
-
-(Add your license here)
+- **UDP over TCP**: Lower latency, fire-and-forget suits animation frames
+- **Rhubarb phonetic**: Language-agnostic audio analysis — works for Chinese TTS without phoneme dictionary
+- **Session JSON**: Full audio + keyframes persisted; replay costs zero API calls
+- **Dual UDP ports**: Face capture (11111) and text-driven (11112) are independent, can coexist
+- **MonoBehaviour only**: Never SerializedMonoBehaviour — compatibility and portability
 
 ## Credits
 
-- **MediaPipe** - Google (Apache 2.0 License)
-- **Live2D Cubism** - Live2D Inc.
-- **Unity Engine** - Unity Technologies
-- **Development** - Built with Claude Code (VibeCoding)
-
-## Support
-
-For setup help, see [SETUP_GUIDE.md](SETUP_GUIDE.md)
-
-For issues:
-1. Check documentation in relevant README files
-2. Enable debug logging
-3. Verify all prerequisites are installed
-
----
-
-Made with ❤️ and Claude Code
+- **MediaPipe** — Google (Apache 2.0)
+- **Live2D Cubism** — Live2D Inc.
+- **Rhubarb Lip Sync** — Daniel S. Wolf (MIT)
+- **Unity Engine** — Unity Technologies
+- **Built with** — Claude Code (VibeCoding)

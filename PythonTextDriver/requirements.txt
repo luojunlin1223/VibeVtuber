@@ -1,0 +1,14 @@
+# PythonTextDriver dependencies
+# Install with: conda activate Vtuber && pip install -r requirements.txt
+
+# Qwen / DashScope (emotion analysis, CosyVoice TTS)
+openai>=1.30.0
+dashscope>=1.20.0
+
+# Alibaba Cloud ISI TTS (speech synthesis with phoneme timestamps)
+nls-python-sdk>=1.0.0
+
+# Audio playback and WAV manipulation (speech_player.py)
+sounddevice>=0.4.6
+soundfile>=0.12.1
+numpy>=1.24.0

@@ -1,10 +1,10 @@
 # Technology Stack
 
-**Last Updated:** 2026-02-15 01:03
+**Last Updated:** 2026-03-04
 
 ## Overview
 
-VibeVtuber uses a dual-language architecture: Python for face tracking (ML-optimized) and Unity/C# for rendering and animation control.
+VibeVtuber uses a dual-language architecture: Python for face tracking and text-driven animation (ML-optimized), Unity/C# for Live2D rendering.
 
 ## Python Stack
 
@@ -16,26 +16,96 @@ VibeVtuber uses a dual-language architecture: Python for face tracking (ML-optim
 | **opencv-python** | 4.10.0.84 | Webcam capture and frame processing |
 | **numpy** | 1.26.4 | Matrix operations for head rotation |
 
+### Control Panel Dependencies (conda env: Vtuber)
+
+| Package | Purpose |
+|---------|---------|
+| **fastapi** | REST API + WebSocket server |
+| **uvicorn** | ASGI server |
+| **httpx** | Async HTTP client (CosyVoice clone API proxy) |
+| **python-multipart** | File upload support (voice clone audio) |
+| **openai** | Qwen NLP via OpenAI-compat API |
+| **dashscope** | Qwen TTS + CosyVoice synthesis |
+| **alibabacloud-nls-python-sdk** | ISI TTS WebSocket SDK (`import nls`) |
+| **aliyun-python-sdk-core** | ISI AccessKey → Token exchange |
+| **websocket-client** | CosyVoice WebSocket API raw protocol |
+| **sounddevice** | 本地音频播放（TTS 朗读）|
+| **soundfile** | WAV 文件解码 |
+
+### External Binaries
+
+| Binary | Version | Purpose |
+|--------|---------|---------|
+| **rhubarb** | v1.14.0 | 离线音频口型分析，`PythonTextDriver/rhubarb` |
+
+### External AI Services
+
+| Service | SDK / Protocol | Purpose |
+|---------|---------------|---------|
+| **Qwen (DashScope)** | openai-compat REST | NLP emotion analysis |
+| **Aliyun ISI TTS** | WebSocket (NLS) | Speech synthesis + phoneme timestamps |
+| **CosyVoice (DashScope)** | WebSocket raw protocol | Custom voice clone synthesis |
+| **CosyVoice Clone API** | REST via httpx | Create/list/query/delete custom voices |
+
 ### Python Runtime
-- **Version**: Python 3.8+ (tested on 3.11)
-- **Environment**: Virtual environment (`venv`)
-- **Platform**: Windows, macOS, Linux
+- **Version**: Python 3.11
+- **Environment**: conda `Vtuber`
+- **Platform**: macOS (primary), Linux compatible
 
 ### MediaPipe Details
 - **Model**: Face Landmarker v2 with blendshapes
-- **File**: `face_landmarker_v2_with_blendshapes.task`
-- **Size**: ~10MB
-- **Features**:
-  - 468 face landmarks
-  - 52 ARKit-compatible blendshapes
-  - 4x4 transformation matrix (head pose)
-  - Real-time video mode
+- **Features**: 468 landmarks, 52 ARKit blendshapes, head pose matrix, real-time video
 
 ### Networking
-- **Protocol**: UDP (fire-and-forget)
-- **Port**: 11111 (localhost only)
-- **Serialization**: JSON (UTF-8)
-- **Socket**: `socket.SOCK_DGRAM` (non-blocking)
+- **Face tracking**: UDP 11111, localhost, 30 msg/s, JSON
+- **Text-driven animation**: UDP 11112, localhost, event-based, JSON
+
+## Text-Driven Animation Stack
+
+### Pipeline
+
+```
+Text → Qwen NLP → emotion_bs
+Text → ISI/CosyVoice TTS → WAV audio
+WAV  → Rhubarb (phonetic) → mouth cues (A-H/X + timestamps)
+     → Live2D keyframes [{time_ms, blendshapes}]
+     → SpeechPlayer → sd.play() + timed UDP → Unity
+```
+
+### Rhubarb Lip Sync
+
+- **Binary**: `PythonTextDriver/rhubarb` (v1.14.0, macOS)
+- **Mode**: `--recognizer phonetic`（纯声学分析，无语言限制）
+- **Output**: 9 种嘴形（X 静默 / A 闭口 / B-H 开口程度递增 / E 圆唇）
+- **Latency**: ~0.5s per short utterance
+- **Fallback**: ISI phoneme_flat → phonemes_to_keyframes（Rhubarb 不可用时）
+
+### Rhubarb 嘴形 → Live2D 映射
+
+| Shape | 发音特征 | jawOpen | mouthFunnel |
+|-------|---------|---------|-------------|
+| X | 静默 | 0.00 | 0.00 |
+| A | P/B/M 闭口 | 0.05 | 0.00 |
+| B | K/S/T 微开 | 0.25 | 0.00 |
+| C | TH/CH 中开 | 0.40 | 0.00 |
+| D | "A" 大开 | 0.80 | 0.00 |
+| E | "O" 圆唇 | 0.50 | 0.65 |
+| F | F/V 齿唇 | 0.15 | 0.00 |
+| G | L 舌尖 | 0.30 | 0.00 |
+| H | 放松开口 | 0.35 | 0.00 |
+
+### CosyVoice WebSocket 协议
+
+- **Endpoint**: `wss://dashscope.aliyuncs.com/api-ws/v1/inference`
+- **Auth**: `Authorization: Bearer {api_key}` header
+- **Audio format**: PCM 22050Hz mono 16bit（手动添加 WAV header）
+- **word_timestamp_enabled**: 仅系统音色支持，克隆音色返回空 words
+
+### Session 持久化
+
+- **路径**: `control-panel/data/sessions/{id}.json`
+- **内容**: text, voice, emotion, audio_base64, keyframes, emotion_bs, metadata
+- **重播**: 直接读取 JSON 调用 SpeechPlayer，无需重新合成
 
 ## Unity Stack
 
@@ -43,265 +113,61 @@ VibeVtuber uses a dual-language architecture: Python for face tracking (ML-optim
 - **Version**: Unity 6 (6000.3.8f1)
 - **Template**: 2D (URP)
 - **API Level**: .NET Standard 2.1
-- **Platform**: Windows (primary), macOS/Linux compatible
-
-### Render Pipeline
-- **Pipeline**: Universal Render Pipeline (URP)
-- **Version**: 17.3.0
-- **Renderer**: 2D Renderer
-- **Assets**:
-  - `UniversalRenderPipelineAsset.asset`
-  - `Renderer2D.asset`
 
 ### Unity Packages
 
 | Package | Version | Purpose |
 |---------|---------|---------|
-| **2D Animation** | 13.0.4 | Sprite rigging and animation |
-| **2D Sprite** | 1.0.0 | Sprite management |
-| **2D Tilemap** | 1.0.0 | Level design (future) |
-| **Input System** | 1.18.0 | New input system |
-| **Timeline** | 1.8.10 | Cinematic sequences |
-| **Visual Scripting** | 1.9.9 | Node-based scripting |
-| **Test Framework** | 1.4.6 | Unit/integration tests |
+| **Universal Render Pipeline** | 17.3.0 | 渲染管线 |
+| **2D Animation** | 13.0.4 | Sprite rigging |
+| **Input System** | 1.18.0 | 输入系统 |
+| **Live2D Cubism SDK** | 4.x | Live2D 模型渲染 |
+| **Odin Inspector** | latest | Inspector UI 增强 |
 
-### Third-Party Packages
+### C# Scripts
 
-| Package | Purpose | Vendor |
-|---------|---------|--------|
-| **Live2D Cubism SDK** | Live2D model rendering | Live2D Inc. |
-| **Odin Inspector** | Advanced Inspector UI | Sirenix |
+| 脚本 | 端口 | 职责 |
+|------|------|------|
+| `FaceDataReceiver.cs` | 11111 | 接收面部捕捉 blendshapes |
+| `Live2DFaceController.cs` | — | Live2D 参数驱动（含 SetParameter API）|
+| `AutoBlinkController.cs` | — | 自动眨眼 |
+| `TextDrivenController.cs` | 11112 | 接收口型/情感，LateUpdate 写 Live2D |
 
-### C# Scripting
+### TextDrivenController 设计要点
 
-#### Core Namespaces
-```csharp
-using System;
-using System.Collections.Concurrent;  // Thread-safe queue
-using System.Collections.Generic;
-using System.Net;
-using System.Net.Sockets;
-using System.Text;
-using System.Threading;
-using UnityEngine;
-using UnityEngine.Events;
-using Sirenix.OdinInspector;           // UI framework
-using Live2D.Cubism.Core;              // Live2D
-using Live2D.Cubism.Framework;
-```
+- `LateUpdate()` 处理 UDP 消息队列，写 Live2D 参数
+- `resetDelay = 0.3s`：超过此时间无新帧则停止 override
+- `ApplyZeros()`：reset 消息或 override 结束时主动清零所有参数
+- 消息类型：`lip_sync`（口型帧）、`text_emotion`（情感 blendshapes）、`reset`（归位）
 
-#### Language Features Used
-- **Threading**: Background thread for UDP I/O
-- **Generics**: `List<T>`, `Dictionary<K,V>`, `ConcurrentQueue<T>`
-- **LINQ**: `Array.Find()`, `List.ForEach()`
-- **Coroutines**: `IEnumerator` for auto-blink
-- **Events**: `UnityEvent<T>` for decoupling
-- **Attributes**: Odin Inspector annotations
+### Coding Standards
+- **ALWAYS** `MonoBehaviour`，**NEVER** `SerializedMonoBehaviour`
+- Odin Inspector 属性直接加在 `MonoBehaviour` 上
 
-### Networking (Unity Side)
-- **Class**: `System.Net.Sockets.UdpClient`
-- **Mode**: Asynchronous receive (background thread)
-- **Deserialization**: Manual JSON parsing (no JsonUtility for dictionaries)
-- **Thread Safety**: `ConcurrentQueue<string>` for message passing
-
-## Live2D Integration
-
-### Live2D Cubism SDK
-- **Version**: 4.x (latest)
-- **Components**:
-  - `CubismModel`: Model container
-  - `CubismParameter`: Animatable parameters
-  - `CubismDeformer`: Mesh deformation
-- **Parameter Types**:
-  - Angles (head rotation): -30° to +30°
-  - Normalized (blendshapes): 0.0 to 1.0
-
-### Parameter Naming Conventions
-**Standard Cubism Parameters:**
-- `ParamAngleX/Y/Z`: Head rotation
-- `ParamEyeLOpen/ROpen`: Eye opening
-- `ParamEyeBallX/Y`: Eye direction
-- `ParamBrowLY/RY`: Eyebrow height
-- `ParamMouthOpenY`: Mouth opening
-- `ParamMouthForm`: Mouth shape (smile/frown)
-
-**Custom Parameters:**
-- Model-specific names vary
-- Inspector configuration required
-
-## Odin Inspector Framework
-
-### Purpose
-Professional-grade Unity Inspector customization
-
-### Key Features Used
-- **Attributes**:
-  - `[Title]`: Section headers
-  - `[BoxGroup]`: Visual grouping
-  - `[FoldoutGroup]`: Collapsible sections
-  - `[HorizontalGroup]`: Horizontal layout
-  - `[ProgressBar]`: Visual value bars
-  - `[LabelText]`: Custom labels
-  - `[Tooltip]`: Hover hints
-  - `[ShowIf]`: Conditional display
-  - `[Button]`: Inspector buttons
-  - `[GUIColor]`: Custom colors
-  - `[ReadOnly]`: Non-editable fields
-  - `[SuffixLabel]`: Units display
-
-### Base Classes
-- `SerializedMonoBehaviour`: Odin-enhanced MonoBehaviour
-- Supports more serialization types (Dictionary, etc.)
+### Live2D Parameter Conventions
+- `ParamMouthOpenY`: 嘴巴张开度（jawOpen 驱动）
+- `ParamMouthForm`: 嘴型（mouthFunnel/mouthPucker/mouthSmile 驱动）
+- `ParamAngleX/Y/Z`: 头部旋转（面部捕捉驱动）
 
 ## Development Tools
 
 ### IDEs
-- **Primary**: Visual Studio Code
-- **Alternative**: Visual Studio 2022
-- **Unity**: Built-in script editor
+- Visual Studio Code + Claude Code
 
 ### Version Control
-- **Git**: Source control
-- **GitHub**: Remote repository
-- **LFS**: Large file storage (Live2D models)
+- Git + GitHub
 
-### Debugging Tools
-- **Unity Console**: Runtime logging
-- **Unity Profiler**: Performance analysis
-- **Python Print**: Debug output
-- **Wireshark**: Network packet inspection (optional)
-
-## File Formats
-
-### Configuration
-- **Python Config**: `config.json` (JSON)
-- **Unity Settings**: `ProjectSettings/` (YAML)
-
-### Assets
-- **Live2D Model**: `.model3.json` + `.moc3` + textures
-- **Animation Curve**: Unity `AnimationCurve` (serialized)
-- **Sprites**: PNG (for future 2D sprites)
-
-### Data Exchange
-- **Network**: JSON (UTF-8 encoded)
-- **Message Size**: ~2KB per frame
-- **Frequency**: 30 messages/second
-
-### Documentation
-- **Format**: Markdown (`.md`)
-- **Location**: Project root and subdirectories
-
-## Build & Deployment
-
-### Python Deployment
-```bash
-# Virtual environment
-python -m venv venv
-venv\Scripts\activate  # Windows
-source venv/bin/activate  # Unix
-
-# Dependencies
-pip install -r requirements.txt
-
-# Model download
-# Manual: Download face_landmarker_v2_with_blendshapes.task
-# Place in: PythonFaceTracker/models/
-```
-
-### Unity Deployment
-- **Build Target**: Windows Standalone (64-bit)
-- **Build Location**: `Builds/`
-- **Dependencies**: Live2D SDK included in build
-
-### Distribution
-- **Python**: Standalone executable (future: PyInstaller)
-- **Unity**: Executable + Data folder
-- **Total Size**: ~500MB (Unity build) + ~50MB (Python)
-
-## Performance Targets
-
-### Python Performance
-- **Target FPS**: 30
-- **CPU Usage**: <30%
-- **Memory**: <200MB
-- **Startup Time**: <3 seconds
-
-### Unity Performance
-- **Target FPS**: 60 (rendering)
-- **Data Processing**: 30 messages/second
-- **CPU Usage**: <20% (Update loop)
-- **Memory**: <500MB
-- **Latency**: <50ms (camera to render)
+### Debugging
+- Unity Console, Python print, Wireshark (optional)
 
 ## Platform Support
 
 ### Officially Tested
-- ✅ Windows 11 (primary development)
-- ✅ Python 3.11
-- ✅ Unity 6
-
-### Expected to Work
-- ⚠️ macOS (Intel/Apple Silicon)
-- ⚠️ Linux (Ubuntu 22.04+)
-- ⚠️ Python 3.8-3.12
+- ✅ macOS (Apple Silicon / Intel)
+- ✅ Python 3.11 (conda Vtuber)
+- ✅ Unity 6 (6000.3.8f1)
 
 ### Known Limitations
-- Webcam required (no video file input yet)
-- Localhost only (no remote tracking)
-- Single face tracking (multi-face not supported)
-
-## Future Technology Considerations
-
-### Potential Additions
-- **MessagePack**: Binary serialization (smaller than JSON)
-- **WebSocket**: Bidirectional communication
-- **gRPC**: Structured RPC (if needed)
-- **SQLite**: Recording/playback storage
-- **FFmpeg**: Video file input/output
-
-### Optimization Opportunities
-- **IL2CPP**: Unity scripting backend (AOT compilation)
-- **Burst Compiler**: High-performance C# code
-- **GPU Compute**: MediaPipe on GPU
-- **One-Euro Filter**: Better smoothing algorithm
-
-## Dependencies Management
-
-### Python
-```
-requirements.txt
-├─ mediapipe==0.10.30
-├─ opencv-python==4.10.0.84
-└─ numpy==1.26.4
-```
-
-### Unity
-```
-Packages/manifest.json
-├─ com.unity.2d.animation@13.0.4
-├─ com.unity.inputsystem@1.18.0
-├─ com.unity.render-pipelines.universal@17.3.0
-└─ [Live2D Cubism SDK - imported manually]
-```
-
-### External
-- Live2D Cubism SDK: Downloaded from Live2D website
-- Odin Inspector: Asset Store purchase
-- MediaPipe Model: Downloaded from MediaPipe website
-
-## Security Considerations
-
-### Network Security
-- Localhost only (127.0.0.1)
-- No authentication (local machine trust)
-- UDP fire-and-forget (no replay attacks)
-
-### Data Privacy
-- No data sent outside local machine
-- No telemetry
-- Webcam access required (user must consent)
-
-### Code Security
-- No eval() or dynamic code execution
-- No user input in shell commands
-- Type-safe parameter access
+- CosyVoice 克隆音色不支持 `word_timestamp_enabled`（API 限制）
+- Rhubarb phonetic 模式中文精度低于英文，但对 TTS 干净音频效果可接受
+- RVC 全量推理（HuBERT + Faiss）尚未实现，当前用 SimpleRVC pitch-shift

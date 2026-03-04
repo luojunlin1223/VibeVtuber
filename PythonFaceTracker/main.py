@@ -3,6 +3,7 @@ VibeVtuber Face Tracker - Main Entry Point
 Captures webcam feed, processes with MediaPipe, and sends data to Unity via UDP
 """
 
+import argparse
 import cv2
 import json
 import time
@@ -162,6 +163,11 @@ def select_camera(config_camera_index: int, max_index: int = 10) -> int:
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--no-interactive', action='store_true',
+                        help='Skip camera selection prompt, use camera index from config.json')
+    args = parser.parse_args()
+
     print("=" * 70)
     print("VibeVtuber Face Tracker")
     print("=" * 70)
@@ -175,7 +181,11 @@ def main():
         return
 
     # Select camera
-    selected_camera_index = select_camera(config['camera']['index'], max_index=10)
+    if args.no_interactive:
+        selected_camera_index = config['camera']['index']
+        print(f"[Camera] Non-interactive mode: using camera index {selected_camera_index} from config.json")
+    else:
+        selected_camera_index = select_camera(config['camera']['index'], max_index=10)
 
     if selected_camera_index is None:
         print("[Info] No camera selected, exiting...")
