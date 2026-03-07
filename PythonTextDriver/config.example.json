@@ -1,0 +1,18 @@
+{
+  "qwen": {
+    "api_key": "YOUR_QWEN_API_KEY",
+    "model": "qwen-turbo",
+    "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1"
+  },
+  "isi": {
+    "appkey": "YOUR_ISI_APPKEY",
+    "ak_id": "YOUR_ALIYUN_AK_ID",
+    "ak_secret": "YOUR_ALIYUN_AK_SECRET",
+    "voice": "siyue",
+    "url": "wss://nls-gateway-cn-shanghai.aliyuncs.com/ws/v1"
+  },
+  "server": {
+    "host": "127.0.0.1",
+    "port": 7778
+  }
+}

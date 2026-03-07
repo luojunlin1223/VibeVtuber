@@ -92,6 +92,7 @@ PythonFaceTracker/.Python
 # Python Text Driver
 PythonTextDriver/__pycache__/
 PythonTextDriver/*.pyc
+PythonTextDriver/config.json
 
 # Control Panel
 control-panel/__pycache__/
