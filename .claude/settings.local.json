@@ -41,7 +41,24 @@
       "WebSearch",
       "Bash(conda run:*)",
       "Bash(source:*)",
-      "Bash(conda activate:*)"
+      "Bash(conda activate:*)",
+      "Bash(/opt/miniconda3/bin/conda run -n Vtuber python:*)",
+      "Bash(brew list:*)",
+      "Bash(chmod:*)",
+      "Bash(system_profiler:*)",
+      "Bash(sudo killall:*)",
+      "Bash(python3:*)",
+      "Bash(python -c:*)",
+      "Bash(echo:*)",
+      "Bash(conda info:*)",
+      "Bash(/opt/miniconda3/envs/Vtuber/bin/python:*)",
+      "Bash(/opt/miniconda3/envs/Vtuber/bin/pip install:*)",
+      "Bash(HF_ENDPOINT=https://hf-mirror.com /opt/miniconda3/envs/Vtuber/bin/python:*)",
+      "Bash(conda install:*)",
+      "Bash(pip show:*)",
+      "Bash(/opt/miniconda3/bin/conda run:*)",
+      "WebFetch(domain:www.volcengine.com)",
+      "WebFetch(domain:help.aliyun.com)"
     ]
   }
 }
